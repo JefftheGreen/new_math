@@ -3,6 +3,7 @@
 
 import math
 import numpy as np
+from utilities.variables import lazy_property
 
 
 # Get the pairwise sum of two or more iterables.
@@ -72,8 +73,111 @@ def binary_divide_range(spectrum, index):
         return spectrum[-index]
     value_range = len(spectrum)
     value_floor = min(spectrum)
-    l = math.log2(index)
-    step = value_range / 2 ** (math.ceil(l))
-    step_number = (2 * (index - 2 ** (int(math.log2(index)))) - 1) % int(
+    l = math.ceil(math.log2(index))
+    step = value_range / 2 ** l
+    step_number = (2 * (index - 2 ** l) - 1) % int(
         value_range / step)
     return step * step_number + value_floor
+
+class SpaceBinaryDivider:
+
+    def __init__(self, x_range, y_range, index):
+        self.x_range = x_range
+        self.y_range = y_range
+        self.index = index
+
+    @staticmethod
+    def first_point(grid):
+        return ((2 ** (grid - 1)) + 1) ** 2
+
+    @classmethod
+    def grid_points_count(cls):
+        return cls.first_point(grid) - cls.first_point(grid - 1)
+
+    @staticmethod
+    def number_center_points(grid):
+        return 2 ** (2 * (grid - 1))
+
+    @staticmethod
+    def spacing(grid):
+        return 1 / (2 ** grid)
+
+    @lazy_property
+    def grid(self):
+        return 0 if self.index < 4 \
+            else math.ceil(math.log2(math.sqrt(self.index + 1)-1))
+
+    @lazy_property
+    def length_long_row(self):
+        return 2 ** self.grid + 1 - math.sqrt(self.number_center_points(self.grid))
+
+    @lazy_property
+    def length_short_row(self):
+        return 2 ** (self.grid - 1)
+
+    @lazy_property
+    def order_in_grid(self):
+        return self.index - self.first_point(self.grid)
+
+    @lazy_property
+    def order_in_group(self):
+        return (self.order_in_grid - self.number_center_points(self.grid)) \
+               % (self.length_short_row
+                  + self.length_long_row)
+
+    @lazy_property
+    def in_long(self):
+        return self.order_in_group >= self.length_short_row
+
+    @lazy_property
+    def order_in_row(self):
+        return self.order_in_group - self.length_short_row \
+            if self.in_long \
+            else self.order_in_group
+
+    def is_center(self):
+        return self.order_in_grid < self.number_center_points(self.grid)
+
+    def group(self):
+        return math.floor((self.order_in_grid
+                          - self.number_center_points(self.grid))
+                          / (self.length_long_row
+                             + self.length_short_row))
+
+    def grid_row_column(self):
+        row = self.group() * 2 + self.in_long
+        column = self.order_in_row * 2 if self.in_long \
+            else 1 + 2 * self.order_in_row
+        return row, column
+
+    def unadj_coords(self):
+        if self.grid == 0:
+            x = self.index % 2
+            y = math.floor(self.index / 2)
+        else:
+            s = self.spacing(self.grid)
+            if self.is_center():
+                x = s + 2 * s * (self.order_in_grid % 2 ** (self.grid - 1))
+                y = s + 2 * s * math.floor(self.order_in_grid /
+                                           (2 ** (self.grid - 1)))
+            else:
+                row, column = self.grid_row_column()
+                x, y = s * column, s * row
+        return x, y
+
+    def adj_coords(self):
+        x, y = self.unadj_coords()
+        min_x, min_y = min(self.x_range), min(self.y_range)
+        max_x, max_y = max(self.x_range), max(self.y_range)
+        x_len = max_x - min_x
+        y_len = max_y - min_y
+        return x * x_len + min_x, y * y_len + min_y
+
+
+def binary_divide_space(x_range, y_range, index):
+    divider = SpaceBinaryDivider(x_range, y_range, index)
+    return divider.adj_coords()
+
+def grid(index):
+    return 0 if index < 4 else math.ceil(math.log2(math.sqrt(index + 1)-1))
+
